@@ -1,6 +1,6 @@
 ![pluginIcon](https://github.com/ali-star/KotlinClassMapperGenerator/assets/5895322/76307d08-1f71-4c2b-95b6-2e9166fc2884)
 # KotlinClassMapperGenerator
-## Simple plugin to generate mappers for your entities.
+## Simple IntelliJ plugin to generate mappers for your entities.
 Shortcut: `CTRL + SHIFT + M`
 
 It will generate a new data class for your entity with a mapper.
