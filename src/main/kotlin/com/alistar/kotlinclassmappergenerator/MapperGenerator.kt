@@ -14,6 +14,7 @@ import org.jetbrains.kotlin.idea.caches.resolve.analyze
 import org.jetbrains.kotlin.psi.KtClass
 import org.jetbrains.kotlin.psi.KtFile
 import org.jetbrains.kotlin.psi.KtParameter
+import org.jetbrains.kotlin.psi.psiUtil.isPrivate
 import org.jetbrains.kotlin.resolve.BindingContext
 import org.jetbrains.kotlin.types.isNullable
 import org.jetbrains.kotlin.util.isAnnotated
@@ -38,7 +39,10 @@ class MapperGenerator {
 
         classStringBuilder.append("data class $className$classSuffix (\n")
 
-        primaryConstructorParameters.forEach { parameter ->
+        primaryConstructorParameters.forEach parametersLoop@{ parameter ->
+            if (parameter.isPrivate()) {
+                return@parametersLoop
+            }
             val name = parameter.fqName?.shortName()?.asString()
             val text = parameter.text
             val typeReference = parameter.typeReference
@@ -67,25 +71,29 @@ class MapperGenerator {
                     append(" ")
                     append(name + classSuffix)
                     append(": ")
-                    append(type.toString().replace("?", "") + classSuffix)
+                    append(type.toString().replace("?", ""))
+                    if (nestedClass.isData()) {
+                        append(classSuffix)
+                    }
+                    append(if (type.isNullable()) "?" else "")
                     if (defValue == "null") {
-                        append("? = null")
-                    } else if (defValue != null) {
-                        append(replaceFirst(type.toString().toRegex(), type.toString() + classSuffix))
+                        append(" = null")
                     }
                 }
                 classStringBuilder.append("$newFieldName,\n")
             } else {
-                if (parameter.isAnnotated) {
-                    var textWithoutAnnotations = text
-                    parameter.annotationEntries.forEach { annotation ->
-                        textWithoutAnnotations = textWithoutAnnotations.replace(annotation.text, "")
-                        textWithoutAnnotations.replace("\n", "")
+                val defValue = parameter.defaultValue?.text
+                val newFieldName = buildString {
+                    append(if (parameter.isMutable) "var" else "val")
+                    append(" ")
+                    append(name)
+                    append(": ")
+                    append(type.toString())
+                    if (defValue == "null") {
+                        append(" = null")
                     }
-                    classStringBuilder.append("$textWithoutAnnotations,\n")
-                } else {
-                    classStringBuilder.append("$text,\n")
                 }
+                classStringBuilder.append("$newFieldName,\n")
             }
             println(parameter)
         }
@@ -129,7 +137,10 @@ class MapperGenerator {
         mapperStringBuilder.append("fun ${ktClass.fqName?.shortName()}.mapTo$classSuffix(): $className$classSuffix = $className$classSuffix(\n")
 
         val primaryConstructorParameters = ktClass.primaryConstructorParameters
-        primaryConstructorParameters.forEach { parameter ->
+        primaryConstructorParameters.forEach parametersLoop@{ parameter ->
+            if (parameter.isPrivate()) {
+                return@parametersLoop
+            }
             val name = parameter.fqName?.shortName()?.asString()
             val typeReference = parameter.typeReference
             val bindingContext = typeReference?.analyze()
@@ -151,7 +162,11 @@ class MapperGenerator {
                         project = project,
                     )
                 }
-                mapperStringBuilder.append("${name + classSuffix} = $name" + (if (type.isNullable()) "?" else "") + ".mapTo$classSuffix(),\n")
+                if (nestedClass.isData()) {
+                    mapperStringBuilder.append("${name + classSuffix} = $name" + (if (type.isNullable()) "?" else "") + ".mapTo$classSuffix(),\n")
+                } else {
+                    mapperStringBuilder.append("${name + classSuffix} = $name,\n")
+                }
             } else {
                 mapperStringBuilder.append("$name = $name,\n")
             }
