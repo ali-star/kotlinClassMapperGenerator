@@ -3,6 +3,7 @@ package com.alistar.kotlinclassmappergenerator
 import com.intellij.openapi.command.WriteCommandAction
 import com.intellij.openapi.project.Project
 import com.intellij.psi.JavaPsiFacade
+import com.intellij.psi.PsiDirectory
 import com.intellij.psi.PsiDocumentManager
 import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiFile
@@ -13,6 +14,7 @@ import org.jetbrains.kotlin.asJava.classes.KtUltraLightClass
 import org.jetbrains.kotlin.idea.caches.resolve.analyze
 import org.jetbrains.kotlin.psi.KtClass
 import org.jetbrains.kotlin.psi.KtFile
+import org.jetbrains.kotlin.psi.KtImportDirective
 import org.jetbrains.kotlin.psi.KtParameter
 import org.jetbrains.kotlin.psi.psiUtil.isPrivate
 import org.jetbrains.kotlin.resolve.BindingContext
@@ -26,16 +28,18 @@ class MapperGenerator {
         ktClass: KtClass,
         className: String,
         classSuffix: String,
+        packageName: String,
+        directory: PsiDirectory,
         project: Project,
     ) {
         val psiFileFactory = PsiFileFactory.getInstance(project)
         val psiFile = ktClass.containingKtFile as PsiFile
         val classStringBuilder = StringBuilder()
-        val packageName = (psiFile as KtFile).packageFqName.asString()
         val primaryConstructorParameters = ktClass.primaryConstructorParameters
 
         addPackageName(classStringBuilder, packageName)
-        addImports(psiFile, primaryConstructorParameters, classStringBuilder)
+
+        addImports(psiFile as KtFile, primaryConstructorParameters, classStringBuilder)
 
         classStringBuilder.append("data class $className$classSuffix (\n")
 
@@ -44,7 +48,6 @@ class MapperGenerator {
                 return@parametersLoop
             }
             val name = parameter.fqName?.shortName()?.asString()
-            val text = parameter.text
             val typeReference = parameter.typeReference
             val bindingContext = typeReference?.analyze()
             val type = bindingContext?.get(BindingContext.TYPE, typeReference)
@@ -57,11 +60,13 @@ class MapperGenerator {
             val nestedClass = ktUltraLightClass?.kotlinOrigin as? KtClass
             val nestedClassName = nestedClass?.fqName?.shortName()?.asString() ?: ""
             if (nestedClass != null) {
-                if (nestedClass.isData() && nestedClass.containingKtFile.packageFqName.asString() == packageName) {
+                if (nestedClass.isData()) {
                     generateClass(
                         ktClass = nestedClass,
                         className = nestedClassName,
                         classSuffix = classSuffix,
+                        directory = directory,
+                        packageName = packageName,
                         project = project,
                     )
                 }
@@ -110,8 +115,6 @@ class MapperGenerator {
             classStringBuilderText
         )
 
-        val directory = (psiFile as PsiFile).containingDirectory
-
         val documentManager: PsiDocumentManager = PsiDocumentManager.getInstance(project)
         documentManager.commitAllDocuments()
 
@@ -126,15 +129,25 @@ class MapperGenerator {
         ktClass: KtClass,
         className: String,
         classSuffix: String,
+        packageName: String,
+        directory: PsiDirectory,
         project: Project,
     ) {
         val psiFileFactory = PsiFileFactory.getInstance(project)
-        val psiFile = ktClass.containingKtFile as PsiFile
+        val ktFile = ktClass.containingKtFile
         val mapperStringBuilder = StringBuilder()
-        val packageName = (psiFile as KtFile).packageFqName.asString()
+
+        val classPackageName = ktFile.packageFqName.asString()
 
         addPackageName(mapperStringBuilder, packageName)
-        mapperStringBuilder.append("fun ${ktClass.fqName?.shortName()}.mapTo$classSuffix(): $className$classSuffix = $className$classSuffix(\n")
+
+        if (packageName != classPackageName) {
+            mapperStringBuilder.append("import $classPackageName.${ktClass.name}\n")
+        }
+
+        mapperStringBuilder.append(
+            "fun ${ktClass.fqName?.shortName()}.mapTo$classSuffix(): $className$classSuffix = $className$classSuffix(\n"
+        )
 
         val primaryConstructorParameters = ktClass.primaryConstructorParameters
         primaryConstructorParameters.forEach parametersLoop@{ parameter ->
@@ -154,16 +167,20 @@ class MapperGenerator {
             val nestedClass = ktUltraLightClass?.kotlinOrigin as? KtClass
             val nestedClassName = nestedClass?.fqName?.shortName()?.asString() ?: ""
             if (nestedClass != null) {
-                if (nestedClass.isData() && nestedClass.containingKtFile.packageFqName.asString() == packageName) {
+                if (nestedClass.isData()) {
                     generateMapper(
                         ktClass = nestedClass,
                         className = nestedClassName,
                         classSuffix = classSuffix,
+                        packageName = packageName,
+                        directory = directory,
                         project = project,
                     )
                 }
                 if (nestedClass.isData()) {
-                    mapperStringBuilder.append("${name + classSuffix} = $name" + (if (type.isNullable()) "?" else "") + ".mapTo$classSuffix(),\n")
+                    mapperStringBuilder.append(name + classSuffix)
+                    mapperStringBuilder.append(" = ")
+                    mapperStringBuilder.append(name + (if (type.isNullable()) "?" else "") + ".mapTo$classSuffix(),\n")
                 } else {
                     mapperStringBuilder.append("${name + classSuffix} = $name,\n")
                 }
@@ -180,10 +197,8 @@ class MapperGenerator {
         val mapperFile = psiFileFactory.createFileFromText(
             className + "Mapper.kt",
             KotlinFileType(),
-            mapperStringBuilderText
+            mapperStringBuilderText,
         )
-
-        val directory = (psiFile as PsiFile).containingDirectory
 
         val documentManager: PsiDocumentManager = PsiDocumentManager.getInstance(project)
         documentManager.commitAllDocuments()
@@ -197,35 +212,33 @@ class MapperGenerator {
     }
 
     private fun addImports(
-        psiFile: KtFile,
+        ktFile: KtFile,
         primaryConstructorParameters: List<KtParameter>,
         classStringBuilder: StringBuilder
     ) {
-        val imports = psiFile.importList?.text?.let { originalImports ->
-            val originalList = originalImports.split("\n")
-            val newList = ArrayList<String>()
-            originalList.forEach { import ->
-                var importIsAnnotation = false
-                primaryConstructorParameters.forEach parametersLoop@{ parameter ->
-                    if (parameter.isAnnotated) {
-                        parameter.annotationEntries.forEach { annotation ->
-                            val name = annotation.shortName?.asString()
-                            if (import.endsWith(name ?: "---")) {
-                                importIsAnnotation = true
-                                return@parametersLoop
-                            }
+        val newList = ArrayList<String>()
+        val imports = ktFile.importList?.imports
+        imports?.forEach { import ->
+            val text = import.text
+            var importIsAnnotation = false
+            primaryConstructorParameters.forEach parametersLoop@{ parameter ->
+                if (parameter.isAnnotated) {
+                    parameter.annotationEntries.forEach { annotation ->
+                        val name = annotation.shortName?.asString()
+                        if (text.endsWith(name ?: "---")) {
+                            importIsAnnotation = true
+                            return@parametersLoop
                         }
                     }
                 }
-                if (!importIsAnnotation) {
-                    newList.add(import)
-                }
             }
-            newList.joinToString(separator = "\n") { it }
+            if (!importIsAnnotation) {
+                newList.add(text)
+            }
         }
-
-        if (imports?.isNotEmpty() == true) {
-            classStringBuilder.append("$imports\n\n")
+        if (newList.isNotEmpty()) {
+            val importsText = newList.joinToString(separator = "\n") { it }
+            classStringBuilder.append("$importsText\n\n")
         }
     }
 
@@ -234,6 +247,24 @@ class MapperGenerator {
     }
 
     private fun PsiElement.reformat() {
+        val ktFile = containingFile as KtFile
+        removeUnusedImportDirectives(ktFile)
         CodeStyleManager.getInstance(project).reformat(this)
+    }
+
+    private fun removeUnusedImportDirectives(file: KtFile) {
+        val importDirectives = file.importDirectives
+        val unusedImportDirectives = importDirectives.filter { it.isUsedImportDirective(file).not() }
+        unusedImportDirectives.forEach { it.delete() }
+    }
+
+    private fun KtImportDirective.isUsedImportDirective(file: KtFile): Boolean {
+        if (importedFqName?.asString()?.endsWith("*") == true) return true
+
+        val fileText = file.text
+        val importShortName = importedFqName?.shortName()?.asString()
+        val isUsedAsParameter = fileText.contains(": $importShortName,")
+        val isUsed = fileText.contains("$importShortName.")
+        return isUsedAsParameter || isUsed
     }
 }
