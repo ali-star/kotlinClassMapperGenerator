@@ -3,7 +3,9 @@ package com.alistar.kotlinclassmappergenerator
 import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.PlatformDataKeys
+import com.intellij.psi.PsiFile
 import org.jetbrains.kotlin.psi.KtClass
+import org.jetbrains.kotlin.psi.KtFile
 
 fun main() {
     println("Hello World")
@@ -19,18 +21,24 @@ class GenerateFileAction : AnAction("Kotlin Mapper Class") {
 
         if (psiElement != null && psiElement is KtClass && psiElement.isData()) {
             val ktClass = psiElement as KtClass
+            val packageName = ktClass.containingKtFile.packageFqName.asString()
+            val directory = (ktClass.containingKtFile as PsiFile).containingDirectory
             val psiClassName = ktClass.fqName?.shortName()?.asString() ?: ""
             NewMapperDialog(className = psiClassName).show { className, classSuffix ->
                 mapperGenerator.generateClass(
                     ktClass = ktClass,
                     className = className,
                     classSuffix = classSuffix,
+                    packageName = packageName,
+                    directory = directory,
                     project = project,
                 )
                 mapperGenerator.generateMapper(
                     ktClass = ktClass,
                     className = className,
                     classSuffix = classSuffix,
+                    packageName = packageName,
+                    directory = directory,
                     project = project,
                 )
             }
