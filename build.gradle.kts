@@ -1,17 +1,17 @@
 plugins {
-    id("org.jetbrains.kotlin.jvm") version "1.7.20"
-    id("org.jetbrains.intellij") version "1.8.0"
+    id("org.jetbrains.kotlin.jvm") version "1.9.23"
+    id("org.jetbrains.intellij") version "1.17.2"
 }
 
 group = "com.alistar"
-version = "1.0.4"
+version = "2.0.0"
 
 repositories {
     mavenCentral()
 }
 
 intellij {
-    version.set("2022.2.2")
+    version.set("2023.3.4")
     type.set("IC")
 
     plugins.set(listOf("org.jetbrains.kotlin", "com.intellij.java"))
@@ -37,7 +37,7 @@ tasks {
 
     patchPluginXml {
         sinceBuild.set("213")
-        untilBuild.set("232.*")
+        untilBuild.set("233.*")
     }
 
     signPlugin {

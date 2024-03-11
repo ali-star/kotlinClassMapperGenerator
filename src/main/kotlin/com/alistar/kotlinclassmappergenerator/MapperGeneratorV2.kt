@@ -7,7 +7,7 @@ import com.intellij.psi.codeStyle.CodeStyleManager
 import com.intellij.psi.search.ProjectScope
 import org.jetbrains.kotlin.asJava.classes.KtUltraLightClass
 import org.jetbrains.kotlin.idea.caches.resolve.analyze
-import org.jetbrains.kotlin.idea.completion.argList
+import org.jetbrains.kotlin.idea.search.KotlinSearchUsagesSupport.SearchUtils.isOverridable
 import org.jetbrains.kotlin.psi.*
 import org.jetbrains.kotlin.psi.psiUtil.isPrivate
 import org.jetbrains.kotlin.resolve.BindingContext
@@ -111,7 +111,7 @@ class MapperGeneratorV2 {
         val primaryConstructorParameters = ktClass.primaryConstructorParameters
 
         primaryConstructorParameters.forEach parametersLoop@{ parameter ->
-            if (parameter.isPrivate()) {
+            if (parameter.isPrivate() || parameter.isOverridable()) {
                 return@parametersLoop
             }
 
@@ -128,6 +128,10 @@ class MapperGeneratorV2 {
             val nestedClass = ktUltraLightClass?.kotlinOrigin as? KtClass
             val nestedClassName = nestedClass?.fqName?.shortName()?.asString() ?: ""
             // endregion
+
+            if (nestedClass?.isEnum() == true) {
+                return@parametersLoop
+            }
 
             if (nestedClass != null) {
                 if (nestedClass.containingKtFile == ktClass.containingKtFile) {
@@ -190,8 +194,19 @@ class MapperGeneratorV2 {
 
             val file = rootFile ?: (directory.findFile(modelFile.name) ?: directory.add(modelFile)) as KtFile
 
-            val ktClassName = ktClass.fqName?.asString()?.replace("$packageName.", "") ?: ""
-            val mappedKtClassName = ktClassName.replace(".", "$classSuffix.") + classSuffix
+            // The package name of a kt class could be different from the current directory's package name
+            val ktClassPackageName = ktClass.containingKtFile.packageFqName.asString()
+
+            val ktClassName = if (ktClassPackageName != packageName) {
+                ktClass.fqName?.asString()
+            } else {
+                ktClass.fqName?.asString()?.replace("$packageName.", "") ?: ""
+            }
+            val mappedKtClassName = ktClassName
+                ?.replace("$ktClassPackageName.", "")
+                ?.replace(".", "$classSuffix.")?.let {
+                    "$packageName.$it$classSuffix"
+                }
 
             val function = psiFactory.createFunction("fun $ktClassName.mapTo$classSuffix():" +
                     " $mappedKtClassName = ")
@@ -199,7 +214,7 @@ class MapperGeneratorV2 {
             val arguments = HashMap<String, String>()
 
             primaryConstructorParameters.forEach parametersLoop@{ parameter ->
-                if (parameter.isPrivate()) {
+                if (parameter.isPrivate() || parameter.isOverridable()) {
                     return@parametersLoop
                 }
 
@@ -217,6 +232,10 @@ class MapperGeneratorV2 {
                 val nestedClass = ktUltraLightClass?.kotlinOrigin as? KtClass
                 val nestedClassName = nestedClass?.fqName?.shortName()?.asString() ?: ""
                 // endregion
+
+                if (nestedClass?.isEnum() == true) {
+                    return@parametersLoop
+                }
 
                 if (nestedClass != null) {
                     if (nestedClass.isData()) {
@@ -237,15 +256,20 @@ class MapperGeneratorV2 {
                 }
             }
 
-            val instantiationCode = elementFactory.createExpressionFromText(
-                "$mappedKtClassName(${arguments.entries.joinToString { (paramName, paramValue) ->
-                    "$paramName = $paramValue"
-                }})",
-                null
-            )
-
-            function.add(instantiationCode)
-            file.add(function)
+            try {
+                val instantiationCode = elementFactory.createExpressionFromText(
+                    "$mappedKtClassName(${
+                        arguments.entries.joinToString { (paramName, paramValue) ->
+                            "$paramName = $paramValue"
+                        }
+                    })",
+                    null
+                )
+                function.add(instantiationCode)
+                file.add(function)
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
 
         }
     }
