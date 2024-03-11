@@ -1,5 +1,4 @@
 plugins {
-    id("java")
     id("org.jetbrains.kotlin.jvm") version "1.7.20"
     id("org.jetbrains.intellij") version "1.8.0"
 }
@@ -11,17 +10,19 @@ repositories {
     mavenCentral()
 }
 
-// Configure Gradle IntelliJ Plugin
-// Read more: https://plugins.jetbrains.com/docs/intellij/tools-gradle-intellij-plugin.html
 intellij {
     version.set("2022.2.2")
-    type.set("IC") // Target IDE Platform
+    type.set("IC")
 
-    plugins.set(listOf("Kotlin", "java"))
+    plugins.set(listOf("org.jetbrains.kotlin", "com.intellij.java"))
 }
 
 dependencies {
-    compileOnly("org.jetbrains.kotlin:kotlin-compiler-embeddable:1.7.20")
+    implementation("org.jetbrains.kotlin:kotlin-stdlib-jdk8")
+    implementation("org.jetbrains.kotlin:kotlin-reflect")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.5.2")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-jdk8:1.5.2")
+    implementation("org.jetbrains.kotlin:kotlin-scripting-compiler-embeddable:1.5.30")
 }
 
 tasks {
