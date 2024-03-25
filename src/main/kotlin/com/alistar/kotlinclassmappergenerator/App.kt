@@ -23,7 +23,7 @@ class GenerateFileAction : AnAction("Kotlin Mapper Class") {
             val packageName = ktClass.containingKtFile.packageFqName.asString()
             val directory = ktClass.containingKtFile.containingDirectory ?: return
             val psiClassName = ktClass.fqName?.shortName()?.asString() ?: ""
-            NewMapperDialog(className = psiClassName).show { className, classSuffix ->
+            NewMapperDialog(className = psiClassName).show { className, classSuffix, isRecursive ->
                 mapperGenerator.generateClass(
                     ktClass = ktClass,
                     className = className,
@@ -31,6 +31,7 @@ class GenerateFileAction : AnAction("Kotlin Mapper Class") {
                     packageName = packageName,
                     directory = directory,
                     project = project,
+                    isRecursive = isRecursive,
                 )
                 mapperGenerator.generateMapper(
                     ktClass = ktClass,
@@ -39,6 +40,7 @@ class GenerateFileAction : AnAction("Kotlin Mapper Class") {
                     packageName = packageName,
                     directory = directory,
                     project = project,
+                    isRecursive = isRecursive,
                 )
             }
         } else {

@@ -28,6 +28,7 @@ class MapperGeneratorV2 {
         packageName: String,
         directory: PsiDirectory,
         project: Project,
+        isRecursive: Boolean = true,
     ) {
         val psiFactory = KtPsiFactory(project = project, markGenerated = true)
         val psiFileFactory = PsiFileFactory.getInstance(project)
@@ -72,6 +73,7 @@ class MapperGeneratorV2 {
                     project = project,
                     packageName = packageName,
                     directory = directory,
+                    isRecursive = isRecursive,
                 )
                 imports.forEach { import ->
                     if (file.importList?.imports?.find { it.text.toString() == import.text.toString() } == null) {
@@ -120,7 +122,8 @@ class MapperGeneratorV2 {
         ktClass: KtClass,
         project: Project,
         packageName: String,
-        directory: PsiDirectory
+        directory: PsiDirectory,
+        isRecursive: Boolean = true,
     ): Pair<KtClass, List<KtImportDirective>> {
         val imports = ArrayList<KtImportDirective>()
         val dataClass = psiFactory.createClass("data class $className$classSuffix")
@@ -128,8 +131,17 @@ class MapperGeneratorV2 {
 
         val primaryConstructorParameters = ktClass.primaryConstructorParameters
 
+        if (!isRecursive) {
+            imports.addAll(ktClass.containingKtFile.importList?.imports ?: emptyList())
+        }
+
         primaryConstructorParameters.forEach parametersLoop@{ parameter ->
             if (parameter.isPrivate()) {
+                return@parametersLoop
+            }
+
+            if (!isRecursive) {
+                constructor.addParameter(parameter)
                 return@parametersLoop
             }
 
@@ -248,6 +260,7 @@ class MapperGeneratorV2 {
         packageName: String,
         directory: PsiDirectory,
         project: Project,
+        isRecursive: Boolean = true,
     ) {
         val psiFactory = KtPsiFactory(project = project, markGenerated = true)
         val psiFileFactory = PsiFileFactory.getInstance(project)
@@ -270,6 +283,11 @@ class MapperGeneratorV2 {
 
             primaryConstructorParameters.forEach parametersLoop@{ parameter ->
                 if (parameter.isPrivate()) {
+                    return@parametersLoop
+                }
+
+                if (!isRecursive) {
+                    arguments[parameter.name.toString()] = parameter.name.toString()
                     return@parametersLoop
                 }
 
