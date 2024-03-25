@@ -9,6 +9,7 @@ import java.awt.event.ActionListener
 import java.awt.event.KeyEvent
 import javax.swing.BoxLayout
 import javax.swing.JButton
+import javax.swing.JCheckBox
 import javax.swing.JComponent
 import javax.swing.JDialog
 import javax.swing.JLabel
@@ -23,7 +24,7 @@ class NewMapperDialog(
     private val className: String,
 ) {
 
-    fun show(callback: (className: String, classSuffix: String) -> (Unit)) {
+    fun show(callback: (className: String, classSuffix: String, isRecursive: Boolean) -> (Unit)) {
         val dialog = JDialog()
 
         val escapeListener = ActionListener { dialog.isVisible = false }
@@ -45,8 +46,8 @@ class NewMapperDialog(
         val classSuffixLabel = JLabel("Class suffix: ")
         val classSuffixTextField = JTextField("Model")
 
-        val labels = arrayOf("Class Name: ", "Class suffix: ")
-        val numPairs = labels.size
+        val recursiveLabel = JLabel()
+        val recursiveCheckBox = JCheckBox("Map related entities")
 
         val parent = JPanel(SpringLayout())
         parent.add(classNameLabel)
@@ -55,9 +56,12 @@ class NewMapperDialog(
         parent.add(classSuffixLabel)
         parent.add(classSuffixTextField)
 
+        parent.add(recursiveLabel)
+        parent.add(recursiveCheckBox)
+
         makeCompactGrid(
             parent = parent,
-            rows = numPairs,
+            rows = 3,
             cols = 2,
             initialX = 6,
             initialY = 6,
@@ -71,7 +75,7 @@ class NewMapperDialog(
         jPanel.border = JBUI.Borders.empty(0, 5, 5, 5)
         val button = JButton("Generate")
         button.addActionListener {
-            callback(classNameTextField.text, classSuffixTextField.text)
+            callback(classNameTextField.text, classSuffixTextField.text, recursiveCheckBox.isSelected)
             dialog.isVisible = false
         }
         SwingUtilities.getRootPane(dialog).defaultButton = button
@@ -87,9 +91,12 @@ class NewMapperDialog(
 
     private fun makeCompactGrid(
         parent: Container,
-        rows: Int, cols: Int,
-        initialX: Int, initialY: Int,
-        xPad: Int, yPad: Int
+        rows: Int,
+        cols: Int,
+        initialX: Int,
+        initialY: Int,
+        xPad: Int,
+        yPad: Int
     ) {
         val layout: SpringLayout = try {
             parent.layout as SpringLayout

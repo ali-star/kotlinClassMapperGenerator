@@ -5,7 +5,6 @@ import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.PlatformDataKeys
 import com.intellij.psi.PsiFile
 import org.jetbrains.kotlin.psi.KtClass
-import org.jetbrains.kotlin.psi.KtFile
 
 fun main() {
     println("Hello World")
@@ -13,7 +12,7 @@ fun main() {
 
 class GenerateFileAction : AnAction("Kotlin Mapper Class") {
 
-    private val mapperGenerator = MapperGenerator()
+    private val mapperGenerator = MapperGeneratorV2()
 
     override fun actionPerformed(event: AnActionEvent) {
         val project = event.getData(PlatformDataKeys.PROJECT) ?: return
@@ -22,9 +21,9 @@ class GenerateFileAction : AnAction("Kotlin Mapper Class") {
         if (psiElement != null && psiElement is KtClass && psiElement.isData()) {
             val ktClass = psiElement as KtClass
             val packageName = ktClass.containingKtFile.packageFqName.asString()
-            val directory = (ktClass.containingKtFile as PsiFile).containingDirectory
+            val directory = ktClass.containingKtFile.containingDirectory ?: return
             val psiClassName = ktClass.fqName?.shortName()?.asString() ?: ""
-            NewMapperDialog(className = psiClassName).show { className, classSuffix ->
+            NewMapperDialog(className = psiClassName).show { className, classSuffix, isRecursive ->
                 mapperGenerator.generateClass(
                     ktClass = ktClass,
                     className = className,
@@ -32,6 +31,7 @@ class GenerateFileAction : AnAction("Kotlin Mapper Class") {
                     packageName = packageName,
                     directory = directory,
                     project = project,
+                    isRecursive = isRecursive,
                 )
                 mapperGenerator.generateMapper(
                     ktClass = ktClass,
@@ -40,6 +40,7 @@ class GenerateFileAction : AnAction("Kotlin Mapper Class") {
                     packageName = packageName,
                     directory = directory,
                     project = project,
+                    isRecursive = isRecursive,
                 )
             }
         } else {
