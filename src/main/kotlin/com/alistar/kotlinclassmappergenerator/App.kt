@@ -3,7 +3,6 @@ package com.alistar.kotlinclassmappergenerator
 import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.PlatformDataKeys
-import com.intellij.psi.PsiFile
 import org.jetbrains.kotlin.psi.KtClass
 
 fun main() {
@@ -12,7 +11,7 @@ fun main() {
 
 class GenerateFileAction : AnAction("Kotlin Mapper Class") {
 
-    private val mapperGenerator = MapperGeneratorV2()
+    private val mapperGenerator = MapperGenerator()
 
     override fun actionPerformed(event: AnActionEvent) {
         val project = event.getData(PlatformDataKeys.PROJECT) ?: return
