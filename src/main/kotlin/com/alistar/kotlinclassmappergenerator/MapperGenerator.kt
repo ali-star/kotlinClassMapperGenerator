@@ -2,9 +2,9 @@ package com.alistar.kotlinclassmappergenerator
 
 import com.intellij.openapi.command.WriteCommandAction
 import com.intellij.openapi.project.Project
-import com.intellij.psi.*
-import com.intellij.psi.search.ProjectScope
-import org.jetbrains.kotlin.asJava.classes.KtUltraLightClass
+import com.intellij.psi.PsiDirectory
+import com.intellij.psi.PsiDocumentManager
+import com.intellij.psi.PsiFileFactory
 import org.jetbrains.kotlin.idea.base.utils.fqname.fqName
 import org.jetbrains.kotlin.psi.*
 import org.jetbrains.kotlin.psi.psiUtil.isPrivate
@@ -12,7 +12,6 @@ import org.jetbrains.kotlin.resolve.ImportPath
 import org.jetbrains.kotlin.types.isNullable
 import org.jetbrains.kotlin.types.typeUtil.*
 import org.jetbrains.kotlin.util.isAnnotated
-import org.jetbrains.kotlinx.serialization.compiler.backend.common.serialName
 
 class MapperGenerator {
 
@@ -173,14 +172,7 @@ class MapperGenerator {
             } else if (typeArguments.isNotEmpty()) {
                 val args = ArrayList<String>()
                 typeArguments.forEach typeArgumentsLoop@{ typeArgument ->
-                    val typeArgumentSerialName = typeArgument.type.serialName()
-
-                    val typeArgumentNewPsiClass = JavaPsiFacade.getInstance(project)
-                        .findClass(typeArgumentSerialName, ProjectScope.getAllScope(project))
-
-                    val typeArgumentKtUltraLightClass = typeArgumentNewPsiClass as? KtUltraLightClass
-                    val typeArgumentNestedClass = typeArgumentKtUltraLightClass?.kotlinOrigin as? KtClass
-                    val typeArgumentNestedClassName = typeArgumentNestedClass?.fqName?.shortName()?.asString() ?: ""
+                    val (typeArgumentNestedClass, typeArgumentNestedClassName) = typeArgument.getTypeInfo(project)
 
                     if (typeArgumentNestedClass == null) {
                         val typeText = typeArgument.type.fqName?.asString() ?: ""
@@ -260,8 +252,12 @@ class MapperGenerator {
 
             val file = rootFile ?: (directory.findFile(modelFile.name) ?: directory.add(modelFile)) as KtFile
 
-            // The package name of a kt class could be different from the current directory's package name
-            val (ktClassName, mappedKtClassName) = getClassNameInfo(ktClass, packageName, classSuffix, file, psiFactory)
+            val (ktClassName, mappedKtClassName) = ktClass.getClassNameInfo(
+                packageName = packageName,
+                classSuffix = classSuffix,
+                file = file,
+                psiFactory = psiFactory,
+            )
 
             val arguments = HashMap<String, String>()
 
@@ -356,8 +352,7 @@ class MapperGenerator {
                         append("HashMap")
                         append("<")
                         if (keyNestedClass != null) {
-                            val (_, keyMappedClassName) = getClassNameInfo(
-                                ktClass = keyNestedClass,
+                            val (_, keyMappedClassName) = keyNestedClass.getClassNameInfo(
                                 packageName = keyNestedClass.containingKtFile.packageFqName.asString(),
                                 classSuffix = classSuffix,
                                 file = file,
@@ -369,8 +364,7 @@ class MapperGenerator {
                         }
                         append(", ")
                         if (valueNestedClass != null) {
-                            val (_, valueMappedClassName) = getClassNameInfo(
-                                ktClass = valueNestedClass,
+                            val (_, valueMappedClassName) = valueNestedClass.getClassNameInfo(
                                 packageName = valueNestedClass.containingKtFile.packageFqName.asString(),
                                 classSuffix = classSuffix,
                                 file = file,
@@ -465,39 +459,5 @@ class MapperGenerator {
             file.add(function)
             file.reformat()
         }
-    }
-
-    private fun getClassNameInfo(
-        ktClass: KtClass,
-        packageName: String,
-        classSuffix: String,
-        file: KtFile,
-        psiFactory: KtPsiFactory,
-    ): Pair<String?, String?> {
-        val ktClassPackageName = ktClass.containingKtFile.packageFqName.asString()
-
-        val ktClassName = if (ktClassPackageName != packageName) {
-            ktClass.fqName?.asString()
-        } else {
-            ktClass.fqName?.asString()?.replace("$packageName.", "") ?: ""
-        }
-
-        ktClassName.takeIf { !it.isNullOrEmpty() && it.contains(".") }?.let {
-            file.importList?.add(psiFactory.createImportDirective(ImportPath.fromString(it)))
-        }
-        val mappedKtClassName = ktClassName
-            ?.replace("$ktClassPackageName.", "")
-            ?.replace(".", "$classSuffix.")?.let {
-                "$packageName.$it$classSuffix"
-            }
-        val mappedKtClassName1 = ktClassName
-            ?.replace("$ktClassPackageName.", "")
-            ?.replace(".", "$classSuffix.")?.let {
-                "$it$classSuffix"
-            }
-        mappedKtClassName.takeIf { !it.isNullOrEmpty() && it.contains(".") }?.let {
-            file.importList?.add(psiFactory.createImportDirective(ImportPath.fromString(it)))
-        }
-        return Pair(ktClass.fqName?.asString()?.substringAfterLast("."), mappedKtClassName1)
     }
 }
