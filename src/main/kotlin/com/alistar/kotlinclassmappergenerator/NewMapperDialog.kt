@@ -1,5 +1,6 @@
 package com.alistar.kotlinclassmappergenerator
 
+import com.intellij.ui.layout.selected
 import com.intellij.util.ui.JBUI
 import java.awt.Component
 import java.awt.Container
@@ -48,6 +49,7 @@ class NewMapperDialog(
 
         val recursiveLabel = JLabel()
         val recursiveCheckBox = JCheckBox("Map related entities")
+        recursiveCheckBox.isSelected = true
 
         val parent = JPanel(SpringLayout())
         parent.add(classNameLabel)

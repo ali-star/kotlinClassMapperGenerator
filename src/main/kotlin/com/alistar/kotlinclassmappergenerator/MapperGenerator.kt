@@ -43,6 +43,7 @@ class MapperGenerator {
                 )
                 val file = parentKtClass.containingKtFile.importList
                 imports.forEach { import ->
+                    // Check if the import is already exists
                     if (file?.imports?.find { it.text.toString() == import.text.toString() } == null) {
                         file?.add(import)
                     }
@@ -180,7 +181,7 @@ class MapperGenerator {
                             isInt() || isLong() || isShort() || isByte() || isFloat() || isDouble() || isChar()
                                     || isBoolean() || isAny() || fqName?.asString() == "kotlin.String"
                         }
-                        if (typeText.replace("?", "").contains(".") && !isBasicType) {
+                        if (typeText.replace("?", "").replace("!", "").contains(".") && !isBasicType) {
                             imports.add(psiFactory.createImportDirective(ImportPath.fromString(typeText)))
                         }
                         args.add(typeText.substringAfterLast("."))
@@ -190,6 +191,7 @@ class MapperGenerator {
                             val typeText = typeArgumentNestedClassName +
                                     classSuffix +
                                     if (typeArgument.type.isNullable()) "?" else ""
+                            // Why this condition?
                             if (typeText.replace("?", "").contains(".")) {
                                 imports.add(psiFactory.createImportDirective(ImportPath.fromString(typeText)))
                             }
@@ -257,9 +259,26 @@ class MapperGenerator {
             val (ktClassName, mappedKtClassName) = ktClass.getClassNameInfo(
                 packageName = packageName,
                 classSuffix = classSuffix,
-                file = file,
-                psiFactory = psiFactory,
             )
+
+            val ktClassImport = ktClass.fqName?.asString()
+                ?.replace("${ktClass.containingKtFile.packageFqName.asString()}.", "")
+                ?.let {
+                    if (packageName != ktClass.containingKtFile.packageFqName.asString()) {
+                        "${ktClass.containingKtFile.packageFqName.asString()}.$it"
+                    } else {
+                        // Check if the class withing the current package
+                        if (it.replace("$packageName.", "").contains(".")) {
+                            "$packageName.$it"
+                        } else {
+                            null
+                        }
+                    }
+                }
+
+            ktClassImport.takeIf { !it.isNullOrEmpty() && it.contains(".") }?.let {
+                file.importList?.add(psiFactory.createImportDirective(ImportPath.fromString(it)))
+            }
 
             val arguments = HashMap<String, String>()
 
@@ -357,8 +376,6 @@ class MapperGenerator {
                             val (_, keyMappedClassName) = keyNestedClass.getClassNameInfo(
                                 packageName = keyNestedClass.containingKtFile.packageFqName.asString(),
                                 classSuffix = classSuffix,
-                                file = file,
-                                psiFactory = psiFactory,
                             )
                             append(keyMappedClassName)
                         } else {
@@ -369,8 +386,6 @@ class MapperGenerator {
                             val (_, valueMappedClassName) = valueNestedClass.getClassNameInfo(
                                 packageName = valueNestedClass.containingKtFile.packageFqName.asString(),
                                 classSuffix = classSuffix,
-                                file = file,
-                                psiFactory = psiFactory,
                             )
                             append(valueMappedClassName)
                         } else {
@@ -459,7 +474,7 @@ class MapperGenerator {
             )
 
             file.add(function)
-            file.reformat()
+            // file.reformat()
         }
     }
 }
