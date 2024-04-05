@@ -1,5 +1,5 @@
 plugins {
-    id("org.jetbrains.kotlin.jvm") version "1.9.23"
+    id("org.jetbrains.kotlin.jvm") version "2.0.0-Beta5"
     id("org.jetbrains.intellij") version "1.17.2"
 }
 
@@ -11,7 +11,7 @@ repositories {
 }
 
 intellij {
-    version.set("2023.3.4")
+    version.set("2024.1")
     type.set("IC")
 
     plugins.set(listOf("org.jetbrains.kotlin", "com.intellij.java"))
@@ -37,7 +37,7 @@ tasks {
 
     patchPluginXml {
         sinceBuild.set("221")
-        untilBuild.set("233.*")
+        untilBuild.set("241.*")
     }
 
     signPlugin {
