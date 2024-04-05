@@ -23,8 +23,7 @@ fun KtImportDirective.isUsedImportDirective(file: KtFile): Boolean {
 
     val fileText = file.text
     val importShortName = importedFqName?.shortName()?.asString()
-    val isUsedAsParameter = fileText.contains(": $importShortName,")
-            || fileText.contains(": $importShortName?,")
+    val isUsedAsParameter = fileText.contains(": $importShortName")
     val isUsed = fileText.contains("$importShortName.")
     return isUsedAsParameter || isUsed
 }
