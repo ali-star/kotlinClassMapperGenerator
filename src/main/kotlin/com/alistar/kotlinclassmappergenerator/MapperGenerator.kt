@@ -187,8 +187,9 @@ class MapperGenerator {
                         return@typeArgumentsLoop
                     } else {
                         if (typeArgumentNestedClass.isData()) {
-                            val typeText =
-                                typeArgumentNestedClassName + classSuffix + if (typeArgument.type.isNullable()) "?" else ""
+                            val typeText = typeArgumentNestedClassName +
+                                    classSuffix +
+                                    if (typeArgument.type.isNullable()) "?" else ""
                             if (typeText.replace("?", "").contains(".")) {
                                 imports.add(psiFactory.createImportDirective(ImportPath.fromString(typeText)))
                             }
@@ -201,7 +202,8 @@ class MapperGenerator {
 
                     generateClass(
                         ktClass = typeArgumentNestedClass,
-                        parentKtClass = if (typeArgumentNestedClass.containingKtFile == ktClass.containingKtFile) dataClass else null,
+                        parentKtClass = if (typeArgumentNestedClass.containingKtFile == ktClass.containingKtFile)
+                            dataClass else null,
                         className = typeArgumentNestedClassName,
                         classSuffix = classSuffix,
                         packageName = packageName,
