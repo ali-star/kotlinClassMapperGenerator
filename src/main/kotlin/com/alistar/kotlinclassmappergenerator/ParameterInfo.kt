@@ -15,14 +15,14 @@ import kotlin.reflect.KClass
 
 data class ParameterInfo(
     val type: KotlinType,
-    val name: String?,
+    val name: String,
     val ultraLightClass: KtUltraLightClass?,
     val ktClass: KtClass?,
-    val ktClassName: String?
+    val ktClassName: String
 )
 
 fun KtParameter.getInfo(): ParameterInfo {
-    val name = fqName?.shortName()?.asString()
+    val name = fqName?.shortName()?.asString() ?: ""
     val typeReference = typeReference
     val bindingContext = typeReference?.analyze()
     val type = bindingContext?.get(BindingContext.TYPE, typeReference)

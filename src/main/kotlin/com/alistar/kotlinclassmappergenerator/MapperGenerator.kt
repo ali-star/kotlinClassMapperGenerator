@@ -5,6 +5,7 @@ import com.intellij.openapi.project.Project
 import com.intellij.psi.PsiDirectory
 import com.intellij.psi.PsiDocumentManager
 import com.intellij.psi.PsiFileFactory
+import org.jetbrains.kotlin.idea.base.psi.kotlinFqName
 import org.jetbrains.kotlin.idea.base.utils.fqname.fqName
 import org.jetbrains.kotlin.psi.*
 import org.jetbrains.kotlin.psi.psiUtil.isPrivate
@@ -16,8 +17,10 @@ import org.jetbrains.kotlin.util.isAnnotated
 class MapperGenerator {
 
     fun generateClass(
-        ktClass: KtClass,
+        originalKtClass: KtClass,
+        newKtFile: KtFile? = null,
         parentKtClass: KtClass? = null,
+        createNewClassInsidePreviousFile: Boolean,
         className: String,
         classSuffix: String,
         packageName: String,
@@ -33,6 +36,97 @@ class MapperGenerator {
             // class needs to be generated inside the ktClass
             if (parentKtClass != null) {
                 val (dataClass, imports) = makeClass(
+                    file = newKtFile!!,
+                    psiFactory = psiFactory,
+                    className = className,
+                    classSuffix = classSuffix,
+                    ktClass = originalKtClass,
+                    project = project,
+                    packageName = packageName,
+                    directory = directory,
+                )
+                val file = parentKtClass.containingKtFile.importList
+                imports.forEach { import ->
+                    // Check if the import is already exists
+                    if (file?.imports?.find { it.text.toString() == import.text.toString() } == null) {
+                        file?.add(import)
+                    }
+                }
+                parentKtClass.addDeclaration(dataClass)
+            } else if (newKtFile != null && createNewClassInsidePreviousFile) {
+                val (dataClass, imports) = makeClass(
+                    file = newKtFile,
+                    psiFactory = psiFactory,
+                    className = className,
+                    classSuffix = classSuffix,
+                    ktClass = originalKtClass,
+                    project = project,
+                    packageName = packageName,
+                    directory = directory,
+                )
+                imports.forEach { import ->
+                    // Check if the import is already exists
+                    if (newKtFile.importList?.imports?.find { it.text.toString() == import.text.toString() } == null) {
+                        newKtFile.add(import)
+                    }
+                }
+                newKtFile.add(dataClass)
+            } else {
+                val modelFile = psiFileFactory.createFileFromText(
+                    "$className$classSuffix.kt",
+                    KotlinFileType(),
+                    "package $packageName"
+                )
+
+                val primaryConstructorParameters = originalKtClass.primaryConstructorParameters
+
+                val file = directory.add(modelFile) as KtFile
+                addImports(originalKtClass.containingKtFile, file, primaryConstructorParameters)
+
+                val (dataClass, imports) = makeClass(
+                    file = file,
+                    psiFactory = psiFactory,
+                    className = className,
+                    classSuffix = classSuffix,
+                    ktClass = originalKtClass,
+                    project = project,
+                    packageName = packageName,
+                    directory = directory,
+                    isRecursive = isRecursive,
+                )
+                imports.forEach { import ->
+                    if (file.importList?.imports?.find { it.text.toString() == import.text.toString() } == null) {
+                        file.importList?.add(import)
+                    }
+                }
+                file.add(dataClass)
+
+                file.reformat()
+            }
+        }
+        val documentManager: PsiDocumentManager = PsiDocumentManager.getInstance(project)
+        documentManager.commitAllDocuments()
+    }
+
+    private fun generateEnum(
+        ktClass: KtClass,
+        parentKtClass: KtClass? = null,
+        newKtFile: KtFile? = null,
+        className: String,
+        classSuffix: String,
+        packageName: String,
+        directory: PsiDirectory,
+        project: Project,
+        isRecursive: Boolean = true,
+    ) {
+        val psiFactory = KtPsiFactory(project = project, markGenerated = true)
+        val psiFileFactory = PsiFileFactory.getInstance(project)
+
+        WriteCommandAction.runWriteCommandAction(project) {
+            // If it has a parent class it means that the class is nested and the model for this
+            // class needs to be generated inside the ktClass
+            if (parentKtClass != null) {
+                val (dataClass, imports) = makeEnum(
                     psiFactory = psiFactory,
                     className = className,
                     classSuffix = classSuffix,
@@ -49,6 +143,23 @@ class MapperGenerator {
                     }
                 }
                 parentKtClass.addDeclaration(dataClass)
+            } else if (newKtFile != null) {
+                val (enumClass, imports) = makeEnum(
+                    psiFactory = psiFactory,
+                    className = className,
+                    classSuffix = classSuffix,
+                    ktClass = ktClass,
+                    project = project,
+                    packageName = packageName,
+                    directory = directory,
+                )
+                imports.forEach { import ->
+                    // Check if the import is already exists
+                    if (newKtFile.importList?.imports?.find { it.text.toString() == import.text.toString() } == null) {
+                        newKtFile.add(import)
+                    }
+                }
+                newKtFile.add(enumClass)
             } else {
                 val modelFile = psiFileFactory.createFileFromText(
                     "$className$classSuffix.kt",
@@ -61,7 +172,7 @@ class MapperGenerator {
                 val file = directory.add(modelFile) as KtFile
                 addImports(ktClass.containingKtFile, file, primaryConstructorParameters)
 
-                val (dataClass, imports) = makeClass(
+                val (dataClass, imports) = makeEnum(
                     psiFactory = psiFactory,
                     className = className,
                     classSuffix = classSuffix,
@@ -111,7 +222,42 @@ class MapperGenerator {
         }
     }
 
+    private fun makeEnum(
+        psiFactory: KtPsiFactory,
+        className: String,
+        classSuffix: String,
+        ktClass: KtClass,
+        project: Project,
+        packageName: String,
+        directory: PsiDirectory,
+        isRecursive: Boolean = true,
+    ): Pair<KtClass, List<KtImportDirective>> {
+        val imports = ArrayList<KtImportDirective>()
+        val text = StringBuilder()
+        text.append("enum class $className$classSuffix")
+        text.append("{")
+        if (ktClass.isEnum()) {
+            text.append(ktClass.declarations.filterIsInstance<KtEnumEntry>().joinToString {
+                if (it.hasInitializer()) {
+                    "${it.name}${it.initializerList?.text}"
+                } else {
+                    it.name.toString()
+                }
+            })
+        }
+        text.append("}")
+        val enumClass = psiFactory.createClass(text.toString())
+        if (ktClass.primaryConstructorParameters.isNotEmpty()) {
+            val constructor = enumClass.createPrimaryConstructorParameterListIfAbsent()
+            ktClass.primaryConstructorParameters.forEach {
+                constructor.addParameter(it)
+            }
+        }
+        return enumClass to imports
+    }
+
     private fun makeClass(
+        file: KtFile,
         psiFactory: KtPsiFactory,
         className: String,
         classSuffix: String,
@@ -150,8 +296,28 @@ class MapperGenerator {
             if (parameterInfo.ktClass != null) {
                 if (parameterInfo.ktClass.isData()) {
                     generateClass(
+                        originalKtClass = parameterInfo.ktClass,
+                        newKtFile = file,
+                        parentKtClass = if (parameterInfo.ktClass.parent.kotlinFqName == ktClass.fqName) dataClass else null,
+                        createNewClassInsidePreviousFile = parameterInfo.ktClass.containingKtFile.classes.size > 1,
+                        className = parameterInfo.ktClassName ?: "",
+                        classSuffix = classSuffix,
+                        packageName = packageName,
+                        directory = directory,
+                        project = project,
+                    )
+
+                    val typeText = parameterInfo.type.fqName?.shortName()?.asString()
+                        ?.replace("?", "") + classSuffix + if (parameterInfo.type.isNullable()) "?" else ""
+                    val text = "val ${parameter.name}$classSuffix: $typeText"
+                    newParameter = psiFactory.createParameter(
+                        text = text
+                    )
+                } else if (parameterInfo.ktClass.isEnum()) {
+                    generateEnum(
                         ktClass = parameterInfo.ktClass,
-                        parentKtClass = if (parameterInfo.ktClass.containingKtFile == ktClass.containingKtFile) dataClass else null,
+                        parentKtClass = if (parameterInfo.ktClass.parent.kotlinFqName == ktClass.fqName) dataClass else null,
+                        newKtFile = file,
                         className = parameterInfo.ktClassName ?: "",
                         classSuffix = classSuffix,
                         packageName = packageName,
@@ -203,9 +369,11 @@ class MapperGenerator {
                     }
 
                     generateClass(
-                        ktClass = typeArgumentNestedClass,
-                        parentKtClass = if (typeArgumentNestedClass.containingKtFile == ktClass.containingKtFile)
+                        newKtFile = file,
+                        originalKtClass = typeArgumentNestedClass,
+                        parentKtClass = if (typeArgumentNestedClass.containingKtFile.parent?.kotlinFqName == ktClass.fqName)
                             dataClass else null,
+                        createNewClassInsidePreviousFile = typeArgumentNestedClass.containingKtFile.classes.size > 1,
                         className = typeArgumentNestedClassName,
                         classSuffix = classSuffix,
                         packageName = packageName,
@@ -474,7 +642,7 @@ class MapperGenerator {
             )
 
             file.add(function)
-            // file.reformat()
+            file.reformat()
         }
     }
 }

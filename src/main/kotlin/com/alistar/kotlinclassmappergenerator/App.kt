@@ -11,7 +11,7 @@ fun main() {
 
 class GenerateFileAction : AnAction("Kotlin Mapper Class") {
 
-    private val mapperGenerator = MapperGenerator()
+    private val mapperGenerator = MapperGeneratorV3()
 
     override fun actionPerformed(event: AnActionEvent) {
         val project = event.getData(PlatformDataKeys.PROJECT) ?: return
@@ -24,13 +24,24 @@ class GenerateFileAction : AnAction("Kotlin Mapper Class") {
             val psiClassName = ktClass.fqName?.shortName()?.asString() ?: ""
             NewMapperDialog(className = psiClassName).show { className, classSuffix, isRecursive ->
                 mapperGenerator.generateClass(
-                    ktClass = ktClass,
+                    originalKtClass = ktClass,
                     className = className,
                     classSuffix = classSuffix,
                     packageName = packageName,
                     directory = directory,
                     project = project,
                     isRecursive = isRecursive,
+                    createNewClassInsidePreviousFile = false
+                )
+                /*mapperGenerator.generateClass(
+                    originalKtClass = ktClass,
+                    className = className,
+                    classSuffix = classSuffix,
+                    packageName = packageName,
+                    directory = directory,
+                    project = project,
+                    isRecursive = isRecursive,
+                    createNewClassInsidePreviousFile = false
                 )
                 mapperGenerator.generateMapper(
                     ktClass = ktClass,
@@ -40,7 +51,7 @@ class GenerateFileAction : AnAction("Kotlin Mapper Class") {
                     directory = directory,
                     project = project,
                     isRecursive = isRecursive,
-                )
+                )*/
             }
         } else {
             Notification.ErrorNotification().show(
