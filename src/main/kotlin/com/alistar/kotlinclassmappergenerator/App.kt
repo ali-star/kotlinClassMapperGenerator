@@ -17,7 +17,7 @@ class GenerateFileAction : AnAction("Kotlin Mapper Class") {
         val project = event.getData(PlatformDataKeys.PROJECT) ?: return
         val psiElement = event.getData(PlatformDataKeys.PSI_ELEMENT)
 
-        if (psiElement != null && psiElement is KtClass && psiElement.isData()) {
+        if (psiElement != null && psiElement is KtClass && (psiElement.isData() || psiElement.isEnum())) {
             val ktClass = psiElement as KtClass
             val packageName = ktClass.containingKtFile.packageFqName.asString()
             val directory = ktClass.containingKtFile.containingDirectory ?: return

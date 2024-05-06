@@ -11,6 +11,7 @@ import org.jetbrains.kotlin.psi.*
 import org.jetbrains.kotlin.psi.psiUtil.isPrivate
 import org.jetbrains.kotlin.resolve.ImportPath
 import org.jetbrains.kotlin.types.KotlinType
+import org.jetbrains.kotlin.types.TypeProjection
 import org.jetbrains.kotlin.types.isNullable
 import org.jetbrains.kotlin.types.typeUtil.*
 import org.jetbrains.kotlin.util.isAnnotated
@@ -161,69 +162,27 @@ class MapperGeneratorV3 {
                     )
                 )
             } else if (typeArguments.isNotEmpty()) {
-                val args = ArrayList<String>()
-                typeArguments.forEach typeArgumentsLoop@{ typeArgument ->
-                    val typeInfo = typeArgument.typeInfo(project = project)
-                    val typeInfoKtClass = typeInfo?.ktClass
-
-                    if (typeInfoKtClass == null) {
-                        val typeText = typeArgument.type.fqName?.asString() ?: ""
-                        val isNotBasicType = !typeArgument.type.isBasicType()
-                        if (isNotBasicType) {
-                            imports.add(psiFactory.createImportDirective(ImportPath.fromString(typeText)))
-                        }
-                        args.add(typeText.substringAfterLast("."))
-                        return@typeArgumentsLoop
-                    } else if (typeInfoKtClass.isSupported()) {
-                        if (typeInfoKtClass.isData()) {
-                            createDataClass(
-                                project = project,
-                                ktClassToGenerateMapperFor = typeInfoKtClass,
-                                className = typeInfo.ktClassName,
-                                classSuffix = classSuffix,
-                                packageName = packageName,
-                                directory = directory,
-                                filesMap = filesMap,
-                                psiFileFactory = psiFileFactory,
-                                psiFactory = psiFactory,
-                                parentKtClassToContain = if (typeInfo.ktClass.isNestedClassOf(ktClassToGenerateMapperFor))
-                                    newClass else null
-                            )
-                        } else if (typeInfoKtClass.isEnum()) {
-                            createEnumClass(
-                                project = project,
-                                ktClassToGenerateMapperFor = typeInfoKtClass,
-                                className = typeInfo.ktClassName,
-                                classSuffix = classSuffix,
-                                packageName = packageName,
-                                directory = directory,
-                                filesMap = filesMap,
-                                psiFileFactory = psiFileFactory,
-                                psiFactory = psiFactory,
-                            )
-                        } else if (typeArgument.type.arguments.isNotEmpty()) {
-                            // Add support
-                        }
-
-                        val typeText = typeInfo.ktClassName +
-                                classSuffix +
-                                if (typeArgument.type.isNullable()) "?" else ""
-
-                        if (typeInfo.ktClass.isNestedClass()) {
-                            imports.add(psiFactory.createImportDirective(
-                                ImportPath.fromString(typeInfo.ktClass.fqName?.asString() ?: ""))
-                            )
-                        }
-                        args.add(typeText)
-                    } else {
-                        args.add("/* Implement manually */")
-                    }
+                val genericClassInfo = analyzeGenericClass(
+                    typeArguments = typeArguments,
+                    ktClassToGenerateMapperFor = ktClassToGenerateMapperFor,
+                    className = className,
+                    project = project,
+                    psiFactory = psiFactory,
+                    filesMap = filesMap,
+                    psiFileFactory = psiFileFactory,
+                    classSuffix = classSuffix,
+                    packageName = packageName,
+                    directory = directory,
+                    newClass = newClass,
+                    parentKtClassToContain = parentKtClassToContain,
+                )
+                genericClassInfo.imports.forEach {
+                    imports.add(it)
                 }
-
                 newParameter = psiFactory.createParameter(
                     text = generateParameterTextForGenericClass(
                         parameterInfo = parameterInfo,
-                        args = args,
+                        args = genericClassInfo.args,
                     )
                 )
             } else {
@@ -255,6 +214,113 @@ class MapperGeneratorV3 {
 
             file.add(newClass)
         }
+    }
+
+    private fun analyzeGenericClass(
+        typeArguments: List<TypeProjection>,
+        ktClassToGenerateMapperFor: KtClass,
+        className: String,
+        project: Project,
+        psiFactory: KtPsiFactory,
+        filesMap: Map<KtFile, KtFile>,
+        psiFileFactory: PsiFileFactory,
+        classSuffix: String,
+        packageName: String,
+        directory: PsiDirectory,
+        newClass: KtClass,
+        parentKtClassToContain: KtClass? = null
+    ): GenericClassInfo {
+        val args = ArrayList<String>()
+        val imports = ArrayList<KtImportDirective>()
+        typeArguments.forEach typeArgumentsLoop@{ typeArgument ->
+            val typeInfo = typeArgument.localTypeInfo(project = project)
+            val typeInfoKtClass = typeInfo?.ktClass
+
+            if (typeInfoKtClass == null) {
+                val typeArgumentIsGeneric = typeArgument.type.arguments.isNotEmpty()
+                if (typeArgumentIsGeneric) {
+                    val genericClassInfo = analyzeGenericClass(
+                        typeArguments = typeArgument.type.arguments,
+                        ktClassToGenerateMapperFor = ktClassToGenerateMapperFor,
+                        className = className,
+                        project = project,
+                        psiFactory = psiFactory,
+                        filesMap = filesMap,
+                        psiFileFactory = psiFileFactory,
+                        classSuffix = classSuffix,
+                        packageName = packageName,
+                        directory = directory,
+                        newClass = newClass,
+                        parentKtClassToContain = parentKtClassToContain,
+                    )
+
+                    val typeText = typeArgument.type.fqName?.asString() ?: ""
+                    val isNotBasicType = !typeArgument.type.isBasicType()
+                    if (isNotBasicType) {
+                        val import = psiFactory.createImportDirective(ImportPath.fromString(typeText))
+                        imports.add(import)
+                    }
+                    args.add("$typeText<${genericClassInfo.args.joinToString { it }}>")
+                    imports.addAll(genericClassInfo.imports)
+                } else {
+                    val typeText = typeArgument.type.fqName?.asString() ?: ""
+                    val isNotBasicType = !typeArgument.type.isBasicType()
+                    if (isNotBasicType) {
+                        imports.add(psiFactory.createImportDirective(ImportPath.fromString(typeText)))
+                    }
+                    args.add(typeText.substringAfterLast("."))
+                }
+                return@typeArgumentsLoop
+            } else if (typeInfoKtClass.isSupported()) {
+                if (typeInfoKtClass.isData()) {
+                    createDataClass(
+                        project = project,
+                        ktClassToGenerateMapperFor = typeInfoKtClass,
+                        className = typeInfo.ktClassName,
+                        classSuffix = classSuffix,
+                        packageName = packageName,
+                        directory = directory,
+                        filesMap = filesMap,
+                        psiFileFactory = psiFileFactory,
+                        psiFactory = psiFactory,
+                        parentKtClassToContain = if (typeInfo.ktClass.isNestedClassOf(ktClassToGenerateMapperFor))
+                            newClass else null
+                    )
+                } else if (typeInfoKtClass.isEnum()) {
+                    createEnumClass(
+                        project = project,
+                        ktClassToGenerateMapperFor = typeInfoKtClass,
+                        className = typeInfo.ktClassName,
+                        classSuffix = classSuffix,
+                        packageName = packageName,
+                        directory = directory,
+                        filesMap = filesMap,
+                        psiFileFactory = psiFileFactory,
+                        psiFactory = psiFactory,
+                    )
+
+                    val typeText = typeInfo.ktClassName +
+                            classSuffix +
+                            if (typeArgument.type.isNullable()) "?" else ""
+
+                    if (typeInfo.ktClass.isNestedClass()) {
+                        imports.add(
+                            psiFactory.createImportDirective(
+                                ImportPath.fromString(typeInfo.ktClass.fqName?.asString() ?: "")
+                            )
+                        )
+                    }
+                    args.add(typeText)
+                }
+            } else {
+                val arg = "/* Implement manually */"
+                args.add(arg)
+            }
+        }
+        return GenericClassInfo(
+            args = args,
+            imports = imports,
+        )
     }
 
     private fun createEnumClass(
@@ -458,7 +524,7 @@ class MapperGeneratorV3 {
                 )
             } else if (typeArguments.isNotEmpty()) {
                 typeArguments.forEach typeArgumentsLoop@{ typeArgument ->
-                    val typeInfo = typeArgument.typeInfo(project = project) ?: return@typeArgumentsLoop
+                    val typeInfo = typeArgument.localTypeInfo(project = project) ?: return@typeArgumentsLoop
                     val typeInfoKtClass = typeInfo.ktClass
                     if (typeInfoKtClass.isNotSupported()) return@typeArgumentsLoop
 

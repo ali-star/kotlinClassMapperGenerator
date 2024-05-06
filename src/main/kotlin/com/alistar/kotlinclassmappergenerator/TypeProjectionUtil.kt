@@ -37,7 +37,7 @@ fun TypeProjection.getTypeInfo(
  * When a type is not being contained in the project the function will return null.
  * @param project need to check if the type is a kt class, and it is contained in the project.
  */
-fun TypeProjection.typeInfo(
+fun TypeProjection.localTypeInfo(
     project: Project
 ): TypeInfo? {
     val typeSerialName = type.serialName()
