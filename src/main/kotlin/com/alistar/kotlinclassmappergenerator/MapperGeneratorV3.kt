@@ -105,7 +105,7 @@ class MapperGeneratorV3 {
                             generateMapper(
                                 ktClass = parameterInfo.ktClass,
                                 rootFile = if (parent != null) file else null,
-                                className = parameterInfo.ktClassName ?: "",
+                                className = parameterInfo.ktClassName,
                                 classSuffix = classSuffix,
                                 packageName = packageName,
                                 directory = directory,
@@ -113,18 +113,19 @@ class MapperGeneratorV3 {
                             )
                             arguments["${parameter.name}$classSuffix"] =
                                 parameterInfo.name + (if (parameterInfo.type.isNullable()) "?" else "") + ".mapTo$classSuffix()"
-                        } else {
-                            arguments["${parameter.name}"] = "/* Implement manually */"
-                        }
-                    } else if (parameterInfo.type.isEnum()) {
-                        arguments["${parameter.name}"] = buildString {
-                            append("when(this) {")
-                            append("\n")
-                            ktClass.declarations.map {
-                                append(ktClass.name + "." + it.name + " -> " + ktClass.name + classSuffix + "." + it.name)
+                        } else if (parameterInfo.ktClass.isEnum()) {
+                            arguments["${parameter.name}$classSuffix"] = buildString {
+                                append("when(${parameter.name}) {")
                                 append("\n")
+                                parameterInfo.ktClass.declarations.map {
+                                    append(
+                                        parameterInfo.ktClass.name + "." + it.name + " -> "
+                                                + parameterInfo.ktClass.name + classSuffix + "." + it.name
+                                    )
+                                    append("\n")
+                                }
+                                append("}")
                             }
-                            append("}")
                         }
                     } else if (typeIsCollection) {
                         val typeArgument = typeArguments.first()
